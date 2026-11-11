@@ -1,0 +1,412 @@
+
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Unity WebGL Player | TurboDismount</title>
+<link rel="icon" href="https://raw.githubusercontent.com/Nawsif/turbodismount/main/TemplateData/favicon.ico">
+<style>
+*{box-sizing:border-box}
+html,body{
+  width:100%;
+  height:100%;
+  margin:0;
+  overflow:hidden;
+  background:#222c36;
+  font-family:Arial,sans-serif;
+}
+#game-shell{
+  position:relative;
+  width:100%;
+  height:100%;
+}
+#gameContainer{
+  width:100%;
+  height:100%;
+  position:relative;
+}
+#gameContainer canvas{
+  display:block;
+  width:100%;
+  height:100%;
+}
+#game-controls{
+  position:absolute;
+  top:12px;
+  right:12px;
+  z-index:20;
+  display:flex;
+  gap:8px;
+}
+#game-controls button,
+#fps-counter{
+  background:rgba(0,0,0,.6);
+  color:white;
+  border:0;
+  border-radius:6px;
+  padding:8px 12px;
+  font:600 13px Arial;
+}
+#fullscreen-button{cursor:pointer}
+#fullscreen-button:hover{background:#444}
+#loading{
+  position:absolute;
+  inset:0;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  background:#222c36;
+  color:white;
+  z-index:15;
+  gap:15px;
+  text-align:center;
+  padding:20px;
+}
+#loading-title{
+  font-size:25px;
+  font-weight:bold;
+}
+#loading-status{
+  font-size:14px;
+  color:#ccc;
+  overflow-wrap:anywhere;
+}
+#progress-track{
+  width:min(350px,85vw);
+  height:8px;
+  background:#141a20;
+  border-radius:20px;
+  overflow:hidden;
+}
+#progress-bar{
+  height:100%;
+  width:0%;
+  background:#fff;
+  border-radius:20px;
+  transition:width .2s ease;
+}
+#gameContainer .logo,
+#gameContainer .progress{
+  position:absolute;
+  left:50%;
+  transform:translateX(-50%);
+  pointer-events:none;
+}
+#gameContainer .logo{
+  top:calc(50% - 100px);
+  width:154px;
+  height:130px;
+  background:center/contain no-repeat;
+}
+#gameContainer .progress{
+  top:calc(50% + 55px);
+  width:180px;
+  height:12px;
+  border-radius:8px;
+  background:#111;
+  overflow:hidden;
+}
+#gameContainer .progress .full{
+  height:100%;
+  background:#fff;
+  float:left;
+}
+#gameContainer .progress .empty{
+  height:100%;
+  background:#333;
+  float:right;
+}
+</style>
+</head>
+<body>
+<main id="game-shell">
+  <div id="gameContainer"></div>
+  <div id="loading">
+    <div id="loading-title">Turbo Dismount</div>
+    <div id="loading-status">Preparing game...</div>
+    <div id="progress-track">
+      <div id="progress-bar"></div>
+    </div>
+  </div>
+  <div id="game-controls">
+    <output id="fps-counter">-- FPS</output>
+    <button id="fullscreen-button">Fullscreen</button>
+  </div>
+</main>
+
+<script>
+const BASE = "https://raw.githubusercontent.com/Nawsif/turbodismount/main/";
+const LOADING = document.getElementById("loading");
+const STATUS = document.getElementById("loading-status");
+const BAR = document.getElementById("progress-bar");
+
+window.ShowReminder ||= function(){};
+window.SetLevelName ||= function(){};
+window.SetLeaderboardEntries ||= function(){};
+
+const blobURLs = new Map();
+
+function setStatus(message, percent){
+  STATUS.textContent = message;
+  if(percent !== undefined){
+    BAR.style.width = Math.max(0,Math.min(100,percent))+"%";
+  }
+}
+
+function raw(path){
+  return new URL(path,BASE).href;
+}
+
+async function getFile(path){
+  const url = raw(path);
+  const response = await fetch(url,{cache:"default"});
+  if(!response.ok){
+    throw new Error("Failed to load "+path+" (HTTP "+response.status+")");
+  }
+  return response;
+}
+
+async function loadScript(path){
+  const response = await getFile(path);
+  const source = await response.text();
+  const url = URL.createObjectURL(
+    new Blob([source+"\n//# sourceURL="+raw(path)],{
+      type:"text/javascript"
+    })
+  );
+
+  try{
+    await new Promise((resolve,reject)=>{
+      const script=document.createElement("script");
+      script.src=url;
+      script.onload=resolve;
+      script.onerror=()=>reject(new Error("Script failed: "+path));
+      document.head.appendChild(script);
+    });
+  }finally{
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function loadParts(){
+  setStatus("Reading game manifest...",2);
+  await loadScript("web-parts.js");
+
+  const manifest=window.UNITY_WEB_PARTS;
+  if(!manifest || !manifest.files){
+    throw new Error("Game manifest is missing.");
+  }
+
+  const entries=Object.entries(manifest.files);
+  const total=entries.reduce((sum,[,file])=>sum+file.size,0);
+  let downloaded=0;
+
+  for(const [path,file] of entries){
+    const buffers=[];
+
+    for(const part of file.parts){
+      setStatus(
+        "Downloading game files...",
+        5+(downloaded/total)*85
+      );
+
+      const response=await getFile(part.path);
+      const bytes=await response.arrayBuffer();
+
+      if(bytes.byteLength!==part.size){
+        throw new Error("Incomplete file: "+part.path);
+      }
+
+      buffers.push(bytes);
+      downloaded+=bytes.byteLength;
+      setStatus(
+        "Downloading game files... "+
+        Math.floor(downloaded/total*100)+"%",
+        5+(downloaded/total)*85
+      );
+    }
+
+    const type=path.includes(".wasm.")
+      ?"application/octet-stream"
+      :"application/octet-stream";
+
+    const blob=new Blob(buffers,{type});
+
+    if(blob.size!==file.size){
+      throw new Error("Incorrect combined size: "+path);
+    }
+
+    blobURLs.set(raw(path),URL.createObjectURL(blob));
+  }
+}
+
+function installURLRedirects(){
+  function resolveURL(url){
+    if(typeof url!=="string") return url;
+
+    try{
+      const absolute=new URL(url,BASE).href;
+      return blobURLs.get(absolute)||url;
+    }catch{
+      return url;
+    }
+  }
+
+  const nativeFetch=window.fetch.bind(window);
+
+  window.fetch=function(resource,options){
+    if(resource instanceof Request){
+      const newURL=resolveURL(resource.url);
+      if(newURL!==resource.url){
+        return nativeFetch(new Request(newURL,resource),options);
+      }
+      return nativeFetch(resource,options);
+    }
+    return nativeFetch(resolveURL(resource),options);
+  };
+
+  const nativeOpen=XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open=function(method,url,...args){
+    return nativeOpen.call(
+      this,method,resolveURL(url),...args
+    );
+  };
+
+  const descriptor=Object.getOwnPropertyDescriptor(
+    HTMLScriptElement.prototype,"src"
+  );
+
+  Object.defineProperty(HTMLScriptElement.prototype,"src",{
+    configurable:true,
+    enumerable:descriptor.enumerable,
+    get:descriptor.get,
+    set(value){
+      descriptor.set.call(this,resolveURL(value));
+    }
+  });
+
+  const nativeSetAttribute=Element.prototype.setAttribute;
+
+  Element.prototype.setAttribute=function(name,value){
+    if(this.tagName==="SCRIPT" && name.toLowerCase()==="src"){
+      value=resolveURL(value);
+    }
+    return nativeSetAttribute.call(this,name,value);
+  };
+}
+
+function initControls(){
+  const shell=document.getElementById("game-shell");
+  const button=document.getElementById("fullscreen-button");
+
+  button.addEventListener("click",async()=>{
+    try{
+      if(document.fullscreenElement){
+        await document.exitFullscreen();
+      }else{
+        await shell.requestFullscreen();
+      }
+    }catch(error){
+      console.error(error);
+    }
+  });
+
+  document.addEventListener("fullscreenchange",()=>{
+    button.textContent=document.fullscreenElement
+      ?"Exit Fullscreen"
+      :"Fullscreen";
+    resizeGame();
+  });
+
+  window.addEventListener("resize",resizeGame);
+}
+
+function resizeGame(){
+  const instance=window.gameInstance;
+  const module=instance&&instance.Module;
+  const container=document.getElementById("gameContainer");
+
+  if(module&&module.calledRun&&module.setCanvasSize){
+    module.setCanvasSize(
+      container.clientWidth,
+      container.clientHeight
+    );
+  }
+}
+
+let frames=0;
+let lastFPS=performance.now();
+
+window.TurboDisplay={
+  frame(){
+    frames++;
+    const now=performance.now();
+
+    if(now-lastFPS>=500){
+      document.getElementById("fps-counter").textContent=
+        Math.round(frames*1000/(now-lastFPS))+" FPS";
+      frames=0;
+      lastFPS=now;
+    }
+  }
+};
+
+async function startGame(){
+  try{
+    initControls();
+
+    setStatus("Loading game resources...",1);
+
+    await loadParts();
+
+    installURLRedirects();
+
+    setStatus("Loading Unity engine...",92);
+
+    await loadScript("TemplateData/UnityProgress.js");
+    await loadScript("Build/UnityLoader.js");
+
+    if(typeof UnityLoader==="undefined"){
+      throw new Error("UnityLoader did not initialize.");
+    }
+
+    setStatus("Starting Turbo Dismount...",96);
+
+    window.gameInstance=UnityLoader.instantiate(
+      "gameContainer",
+      raw("Build/RawWebBuild32.json"),
+      {
+        onProgress:function(instance,progress){
+          UnityProgress(instance,progress);
+
+          if(progress>=1){
+            LOADING.style.display="none";
+          }else{
+            setStatus(
+              "Loading Unity... "+Math.round(progress*100)+"%",
+              96+progress*4
+            );
+          }
+        },
+        Module:{
+          postMainLoop:function(){
+            TurboDisplay.frame();
+          }
+        }
+      }
+    );
+
+    LOADING.style.display="none";
+  }catch(error){
+    console.error("Turbo Dismount loading error:",error);
+    setStatus("Error: "+error.message);
+    BAR.style.background="#ff5555";
+  }
+}
+
+startGame();
+</script>
+</body>
+</html>
