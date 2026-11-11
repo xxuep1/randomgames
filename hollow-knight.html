@@ -1,0 +1,1284 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+
+<base href="https://raw.githubusercontent.com/Stratus-Games/Hollow-Knight-Webport/main/">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hollow Knight</title>
+
+<link rel="icon" href="TemplateData/favicon.ico">
+<link rel="stylesheet" href="TemplateData/style.css">
+
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+    font-family: Arial, sans-serif;
+    color: white;
+}
+
+body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#loadingScreen {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background:
+        radial-gradient(ellipse at 50% 100%,
+        rgba(100,0,0,.24), transparent 65%),
+        #000;
+    transition: opacity .5s;
+}
+
+#loadingScreen::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(
+        ellipse at center,
+        transparent 20%,
+        rgba(0,0,0,.8) 100%
+    );
+}
+
+.loader-content {
+    position: relative;
+    width: min(480px, 85%);
+    text-align: center;
+}
+
+#status {
+    font-size: 14px;
+    color: #ddd;
+    margin-bottom: 12px;
+}
+
+#overallBar {
+    height: 5px;
+    width: 100%;
+    background: #222;
+    overflow: hidden;
+    border-radius: 5px;
+}
+
+#overallProgress {
+    width: 0%;
+    height: 100%;
+    background: #bd1717;
+    box-shadow: 0 0 15px #b00000;
+    transition: width .2s ease;
+}
+
+.progress-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #888;
+    margin-top: 24px;
+    margin-bottom: 8px;
+}
+
+.small-bar {
+    width: 100%;
+    height: 3px;
+    background: #191919;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.small-progress {
+    height: 100%;
+    width: 0%;
+    background: #a51616;
+    transition: width .15s;
+}
+
+#percentage {
+    margin-top: 18px;
+    font-size: 13px;
+    color: #aaa;
+    letter-spacing: 2px;
+}
+
+#details {
+    margin-top: 24px;
+    color: #777;
+    font-size: 11px;
+    line-height: 1.8;
+    overflow-wrap: anywhere;
+}
+
+#loadingError {
+    display: none;
+    margin-top: 25px;
+    color: #ff5555;
+    font-size: 12px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+#retryButton {
+    display: none;
+    margin-top: 20px;
+    border: 1px solid #941818;
+    background: #210707;
+    color: white;
+    padding: 12px 28px;
+    cursor: pointer;
+    letter-spacing: 2px;
+}
+
+#retryButton:hover {
+    background: #481010;
+}
+
+#unity-container {
+    display: none;
+    width: 100%;
+    height: 100%;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+}
+
+#unity-canvas {
+    width: min(100vw, 160vh);
+    height: min(62.5vw, 100vh);
+    max-width: 100%;
+    max-height: calc(100% - 45px);
+    aspect-ratio: 16 / 10;
+    background: #000;
+}
+
+#unity-footer {
+    width: min(960px, 100%);
+    height: 38px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 10px;
+    color: #777;
+    font-size: 12px;
+}
+
+#fullscreenButton {
+    background: #171717;
+    border: 1px solid #333;
+    color: white;
+    padding: 7px 15px;
+    cursor: pointer;
+}
+
+#fullscreenButton:hover {
+    background: #333;
+}
+
+@media(max-width: 600px) {
+    #unity-canvas {
+        width: 100vw;
+        height: auto;
+        max-height: calc(100vh - 38px);
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div id="loadingScreen">
+    <div class="loader-content">
+
+        <div id="status">Preparing game...</div>
+
+        <div id="overallBar">
+            <div id="overallProgress"></div>
+        </div>
+
+        <div id="percentage">0%</div>
+
+        <div class="progress-row">
+            <span>GAME DATA</span>
+            <span id="dataCount">0 / 44</span>
+        </div>
+
+        <div class="small-bar">
+            <div class="small-progress" id="dataProgress"></div>
+        </div>
+
+        <div class="progress-row">
+            <span>WEBASSEMBLY</span>
+            <span id="wasmCount">0 / 3</span>
+        </div>
+
+        <div class="small-bar">
+            <div class="small-progress" id="wasmProgress"></div>
+        </div>
+
+        <div id="details">
+            Initializing storage...
+        </div>
+
+        <div id="loadingError"></div>
+
+        <button id="retryButton" onclick="startGame()">
+            RETRY
+        </button>
+
+    </div>
+</div>
+
+<div id="unity-container">
+
+    <canvas
+        id="unity-canvas"
+        width="960"
+        height="600"
+        tabindex="-1">
+    </canvas>
+
+    <div id="unity-footer">
+        <span>Hollow Knight</span>
+        <button id="fullscreenButton">FULLSCREEN</button>
+    </div>
+
+</div>
+
+<script>
+"use strict";
+
+/* =========================================
+   CONFIGURATION
+========================================= */
+
+const CONFIG = {
+    buildURL: "Build/",
+    loader: "hk.loader.js",
+
+    dataPrefix: "hk.data",
+    wasmPrefix: "hk.wasm",
+
+    dataParts: 44,
+    wasmParts: 3,
+
+    framework: "hk.framework.js",
+    streamingAssets: "StreamingAssets",
+
+    companyName: "Stratus Dev Team",
+    productName: "Hollow Knight",
+    productVersion: "1.5.12620",
+
+    cacheVersion: "hk-file-v4",
+    storageDirectory: "HollowKnightCache",
+
+    databaseName: "HollowKnightFileCache"
+};
+
+
+/* =========================================
+   ELEMENTS
+========================================= */
+
+const $ = id => document.getElementById(id);
+
+const loadingScreen = $("loadingScreen");
+const unityContainer = $("unity-container");
+const canvas = $("unity-canvas");
+
+const statusText = $("status");
+const details = $("details");
+
+const overallProgress = $("overallProgress");
+const percentage = $("percentage");
+
+const dataProgress = $("dataProgress");
+const wasmProgress = $("wasmProgress");
+
+const dataCount = $("dataCount");
+const wasmCount = $("wasmCount");
+
+const errorElement = $("loadingError");
+const retryButton = $("retryButton");
+
+let completedData = 0;
+let completedWasm = 0;
+
+let storageMode = null;
+let storageRoot = null;
+let database = null;
+
+let starting = false;
+
+
+/* =========================================
+   PROGRESS
+========================================= */
+
+function setOverall(value) {
+    value = Math.max(0, Math.min(100, value));
+
+    overallProgress.style.width = value + "%";
+    percentage.textContent = Math.floor(value) + "%";
+}
+
+function updateProgress() {
+    dataProgress.style.width =
+        completedData / CONFIG.dataParts * 100 + "%";
+
+    wasmProgress.style.width =
+        completedWasm / CONFIG.wasmParts * 100 + "%";
+
+    dataCount.textContent =
+        completedData + " / " + CONFIG.dataParts;
+
+    wasmCount.textContent =
+        completedWasm + " / " + CONFIG.wasmParts;
+
+    const total = CONFIG.dataParts + CONFIG.wasmParts;
+    const completed = completedData + completedWasm;
+
+    setOverall(completed / total * 70);
+}
+
+function updatePartProgress(prefix, completed) {
+    if (prefix === CONFIG.dataPrefix) {
+        completedData = completed;
+    } else {
+        completedWasm = completed;
+    }
+
+    updateProgress();
+}
+
+function yieldUI() {
+    return new Promise(resolve => {
+        requestAnimationFrame(resolve);
+    });
+}
+
+
+/* =========================================
+   INDEXEDDB
+========================================= */
+
+function openDatabase() {
+    return new Promise((resolve, reject) => {
+
+        if (!window.indexedDB) {
+            reject(new Error(
+                "IndexedDB is unavailable in this browser."
+            ));
+            return;
+        }
+
+        const request = indexedDB.open(
+            CONFIG.databaseName,
+            1
+        );
+
+        request.onupgradeneeded = () => {
+            const db = request.result;
+
+            if (!db.objectStoreNames.contains("files")) {
+                db.createObjectStore("files");
+            }
+        };
+
+        request.onsuccess = () => {
+            resolve(request.result);
+        };
+
+        request.onerror = () => {
+            reject(
+                request.error ||
+                new Error("Could not open IndexedDB.")
+            );
+        };
+
+        request.onblocked = () => {
+            reject(new Error(
+                "IndexedDB is blocked by another browser connection."
+            ));
+        };
+    });
+}
+
+function idbGet(key) {
+    return new Promise((resolve, reject) => {
+
+        const transaction = database.transaction(
+            "files",
+            "readonly"
+        );
+
+        const request = transaction
+            .objectStore("files")
+            .get(key);
+
+        request.onsuccess = () => resolve(request.result);
+
+        request.onerror = () => reject(request.error);
+    });
+}
+
+function idbPut(key, value) {
+    return new Promise((resolve, reject) => {
+
+        const transaction = database.transaction(
+            "files",
+            "readwrite"
+        );
+
+        transaction.objectStore("files").put(value, key);
+
+        transaction.oncomplete = resolve;
+
+        transaction.onerror = () => reject(transaction.error);
+
+        transaction.onabort = () => reject(transaction.error);
+    });
+}
+
+function idbDelete(key) {
+    return new Promise((resolve, reject) => {
+
+        const transaction = database.transaction(
+            "files",
+            "readwrite"
+        );
+
+        transaction.objectStore("files").delete(key);
+
+        transaction.oncomplete = resolve;
+
+        transaction.onerror = () => reject(transaction.error);
+    });
+}
+
+
+/* =========================================
+   STORAGE INITIALIZATION
+========================================= */
+
+async function initializeStorage() {
+
+    statusText.textContent = "Initializing storage...";
+    details.textContent = "Checking available browser storage.";
+
+    // Try OPFS first.
+    try {
+
+        if (
+            navigator.storage &&
+            typeof navigator.storage.getDirectory === "function"
+        ) {
+
+            if (navigator.storage.persist) {
+                try {
+                    await navigator.storage.persist();
+                } catch (e) {
+                    console.warn("Persistence request:", e);
+                }
+            }
+
+            const root = await navigator.storage.getDirectory();
+
+            storageRoot = await root.getDirectoryHandle(
+                CONFIG.storageDirectory,
+                { create: true }
+            );
+
+            storageMode = "opfs";
+
+            console.log("Using OPFS storage.");
+
+            details.textContent =
+                "Using disk-backed storage.";
+
+            return;
+        }
+
+    } catch (error) {
+
+        console.warn("OPFS unavailable. Trying IndexedDB.", error);
+
+    }
+
+    // Fallback to IndexedDB.
+    try {
+
+        database = await openDatabase();
+
+        storageMode = "indexeddb";
+
+        console.log("Using IndexedDB storage.");
+
+        details.textContent =
+            "Using IndexedDB storage.";
+
+        return;
+
+    } catch (error) {
+
+        throw new Error(
+            "No usable browser storage system is available.\n\n" +
+            "Storage error: " + error.message + "\n\n" +
+            "Your browser may restrict storage for file:// pages. " +
+            "Try a browser that supports local-file IndexedDB."
+        );
+    }
+}
+
+
+/* =========================================
+   OPFS CACHE VALIDATION
+========================================= */
+
+async function getOPFSCachedFile(filename) {
+
+    try {
+
+        const fileHandle =
+            await storageRoot.getFileHandle(filename);
+
+        const markerHandle =
+            await storageRoot.getFileHandle(
+                filename + ".complete"
+            );
+
+        const file = await fileHandle.getFile();
+
+        const marker = await markerHandle.getFile();
+
+        const markerText = await marker.text();
+
+        if (
+            file.size > 0 &&
+            markerText ===
+                CONFIG.cacheVersion + ":" + file.size
+        ) {
+
+            console.log(
+                "Valid OPFS cache:",
+                filename,
+                file.size
+            );
+
+            return file;
+        }
+
+    } catch (error) {
+        console.log("OPFS cache miss:", filename);
+    }
+
+    return null;
+}
+
+
+/* =========================================
+   INDEXEDDB CACHE VALIDATION
+========================================= */
+
+async function getIDBCachedFile(filename) {
+
+    try {
+
+        const cached = await idbGet(
+            CONFIG.cacheVersion + ":" + filename
+        );
+
+        if (
+            cached &&
+            cached.blob instanceof Blob &&
+            cached.blob.size > 0 &&
+            cached.size === cached.blob.size
+        ) {
+
+            console.log(
+                "Valid IndexedDB cache:",
+                filename,
+                cached.size
+            );
+
+            return cached.blob;
+        }
+
+    } catch (error) {
+
+        console.warn("IndexedDB cache read failed:", error);
+
+    }
+
+    return null;
+}
+
+
+/* =========================================
+   OPFS CACHE MARKER
+========================================= */
+
+async function markOPFSComplete(filename, size) {
+
+    const handle =
+        await storageRoot.getFileHandle(
+            filename + ".complete",
+            { create: true }
+        );
+
+    const writer = await handle.createWritable();
+
+    try {
+
+        await writer.write(
+            CONFIG.cacheVersion + ":" + size
+        );
+
+        await writer.close();
+
+    } catch (error) {
+
+        try {
+            await writer.abort();
+        } catch {}
+
+        throw error;
+    }
+}
+
+
+/* =========================================
+   OPFS STREAMING MERGER
+========================================= */
+
+async function mergeOPFS(
+    prefix,
+    partCount,
+    progressCallback
+) {
+
+    const cached =
+        await getOPFSCachedFile(prefix);
+
+    if (cached) {
+
+        progressCallback(partCount);
+
+        return cached;
+    }
+
+    try {
+        await storageRoot.removeEntry(prefix + ".complete");
+    } catch {}
+
+    const outputHandle =
+        await storageRoot.getFileHandle(
+            prefix,
+            { create: true }
+        );
+
+    const writer =
+        await outputHandle.createWritable({
+            keepExistingData: false
+        });
+
+    let totalBytes = 0;
+
+    try {
+
+        for (let i = 0; i < partCount; i++) {
+
+            const partName =
+                prefix + "." +
+                String(i).padStart(3, "0");
+
+            const url = CONFIG.buildURL + partName;
+
+            statusText.textContent =
+                "Downloading " + partName;
+
+            details.textContent =
+                "Part " + (i + 1) +
+                " of " + partCount +
+                " — Writing directly to storage";
+
+            const response = await fetch(url, {
+                cache: "no-store"
+            });
+
+            if (!response.ok) {
+                throw new Error(
+                    "Download failed: " + partName +
+                    "\nHTTP " + response.status
+                );
+            }
+
+            if (!response.body) {
+                throw new Error(
+                    "Streaming is unavailable for " + partName
+                );
+            }
+
+            const reader = response.body.getReader();
+
+            let partBytes = 0;
+
+            try {
+
+                while (true) {
+
+                    const result = await reader.read();
+
+                    if (result.done) break;
+
+                    const chunk = result.value;
+
+                    await writer.write(chunk);
+
+                    totalBytes += chunk.byteLength;
+                    partBytes += chunk.byteLength;
+                }
+
+            } finally {
+
+                reader.releaseLock();
+            }
+
+            if (partBytes === 0) {
+                throw new Error(
+                    "Downloaded part is empty: " + partName
+                );
+            }
+
+            progressCallback(i + 1);
+
+            console.log(
+                "Downloaded:",
+                partName,
+                partBytes
+            );
+
+            await yieldUI();
+        }
+
+        await writer.close();
+
+        const mergedFile = await outputHandle.getFile();
+
+        if (
+            mergedFile.size === 0 ||
+            mergedFile.size !== totalBytes
+        ) {
+            throw new Error(
+                "Merged file size validation failed: " + prefix
+            );
+        }
+
+        await markOPFSComplete(prefix, mergedFile.size);
+
+        return mergedFile;
+
+    } catch (error) {
+
+        try {
+            await writer.abort();
+        } catch {}
+
+        try {
+            await storageRoot.removeEntry(prefix);
+        } catch {}
+
+        try {
+            await storageRoot.removeEntry(prefix + ".complete");
+        } catch {}
+
+        throw error;
+    }
+}
+
+
+/* =========================================
+   INDEXEDDB PART MERGER
+========================================= */
+
+async function mergeIndexedDB(
+    prefix,
+    partCount,
+    progressCallback
+) {
+
+    const cached = await getIDBCachedFile(prefix);
+
+    if (cached) {
+
+        progressCallback(partCount);
+
+        return cached;
+    }
+
+    const parts = [];
+    let totalBytes = 0;
+
+    for (let i = 0; i < partCount; i++) {
+
+        const partName =
+            prefix + "." +
+            String(i).padStart(3, "0");
+
+        const partKey =
+            CONFIG.cacheVersion + ":part:" + partName;
+
+        statusText.textContent =
+            "Downloading " + partName;
+
+        details.textContent =
+            "Part " + (i + 1) +
+            " of " + partCount +
+            " — IndexedDB fallback";
+
+        let partBlob = null;
+
+        // Reuse a previously downloaded part.
+        try {
+
+            const saved = await idbGet(partKey);
+
+            if (
+                saved &&
+                saved.blob instanceof Blob &&
+                saved.blob.size > 0 &&
+                saved.size === saved.blob.size
+            ) {
+                partBlob = saved.blob;
+            }
+
+        } catch (error) {
+            console.warn("Part cache read:", error);
+        }
+
+        // Download missing parts.
+        if (!partBlob) {
+
+            const response = await fetch(
+                CONFIG.buildURL + partName,
+                { cache: "no-store" }
+            );
+
+            if (!response.ok) {
+                throw new Error(
+                    "Download failed: " + partName +
+                    "\nHTTP " + response.status
+                );
+            }
+
+            partBlob = await response.blob();
+
+            if (!partBlob.size) {
+                throw new Error(
+                    "Downloaded part is empty: " + partName
+                );
+            }
+
+            await idbPut(partKey, {
+                blob: partBlob,
+                size: partBlob.size,
+                version: CONFIG.cacheVersion
+            });
+        }
+
+        parts.push(partBlob);
+        totalBytes += partBlob.size;
+
+        progressCallback(i + 1);
+
+        console.log(
+            "Part ready:",
+            partName,
+            partBlob.size
+        );
+
+        await yieldUI();
+    }
+
+    statusText.textContent =
+        "Combining " + prefix + "...";
+
+    details.textContent =
+        "Creating merged Blob from cached parts.";
+
+    const mergedBlob = new Blob(parts, {
+        type: prefix === CONFIG.wasmPrefix
+            ? "application/wasm"
+            : "application/octet-stream"
+    });
+
+    if (
+        mergedBlob.size === 0 ||
+        mergedBlob.size !== totalBytes
+    ) {
+        throw new Error(
+            "IndexedDB merge validation failed: " + prefix
+        );
+    }
+
+    await idbPut(
+        CONFIG.cacheVersion + ":" + prefix,
+        {
+            blob: mergedBlob,
+            size: mergedBlob.size,
+            version: CONFIG.cacheVersion
+        }
+    );
+
+    return mergedBlob;
+}
+
+
+/* =========================================
+   MERGE SELECTOR
+========================================= */
+
+async function mergeFile(
+    prefix,
+    partCount,
+    progressCallback
+) {
+
+    if (storageMode === "opfs") {
+
+        return await mergeOPFS(
+            prefix,
+            partCount,
+            progressCallback
+        );
+    }
+
+    if (storageMode === "indexeddb") {
+
+        return await mergeIndexedDB(
+            prefix,
+            partCount,
+            progressCallback
+        );
+    }
+
+    throw new Error("Storage has not been initialized.");
+}
+
+
+/* =========================================
+   PREPARE GAME FILES
+========================================= */
+
+async function prepareGameFiles() {
+
+    await initializeStorage();
+
+    statusText.textContent =
+        "Preparing game data...";
+
+    const dataFile = await mergeFile(
+        CONFIG.dataPrefix,
+        CONFIG.dataParts,
+        completed => {
+            updatePartProgress(
+                CONFIG.dataPrefix,
+                completed
+            );
+        }
+    );
+
+    statusText.textContent =
+        "Preparing WebAssembly...";
+
+    const wasmFile = await mergeFile(
+        CONFIG.wasmPrefix,
+        CONFIG.wasmParts,
+        completed => {
+            updatePartProgress(
+                CONFIG.wasmPrefix,
+                completed
+            );
+        }
+    );
+
+    return {
+        dataFile,
+        wasmFile
+    };
+}
+
+
+/* =========================================
+   UNITY LOADER
+========================================= */
+
+async function loadUnityLoader() {
+
+    if (typeof createUnityInstance === "function") {
+        return;
+    }
+
+    statusText.textContent =
+        "Loading Unity engine...";
+
+    const script = document.createElement("script");
+
+    script.src = new URL(
+        CONFIG.buildURL + CONFIG.loader,
+        document.baseURI
+    ).href;
+
+    script.async = true;
+
+    await new Promise((resolve, reject) => {
+
+        script.onload = resolve;
+
+        script.onerror = () => {
+            reject(new Error(
+                "Could not load Unity loader:\n" +
+                script.src +
+                "\nCheck the GitHack URL and internet connection."
+            ));
+        };
+
+        document.head.appendChild(script);
+    });
+
+    if (typeof createUnityInstance !== "function") {
+        throw new Error(
+            "Unity loader loaded, but createUnityInstance is missing."
+        );
+    }
+}
+
+
+/* =========================================
+   START GAME
+========================================= */
+
+async function startGame() {
+
+    if (starting) return;
+
+    starting = true;
+
+    try {
+
+        errorElement.style.display = "none";
+        retryButton.style.display = "none";
+
+        unityContainer.style.display = "none";
+
+        completedData = 0;
+        completedWasm = 0;
+
+        updateProgress();
+
+        statusText.textContent =
+            "Preparing Hollow Knight...";
+
+        details.textContent =
+            "Initializing storage.";
+
+        const files = await prepareGameFiles();
+
+        statusText.textContent =
+            "Preparing Unity engine...";
+
+        details.textContent =
+            "Creating game file URLs.";
+
+        setOverall(70);
+
+        // Blob URLs avoid converting the complete
+        // files into JavaScript ArrayBuffers.
+
+        const dataURL = URL.createObjectURL(
+            files.dataFile
+        );
+
+        const wasmBlob = new Blob(
+            [files.wasmFile],
+            { type: "application/wasm" }
+        );
+
+        const wasmURL = URL.createObjectURL(
+            wasmBlob
+        );
+
+        window.hollowKnightBlobURLs = [
+            dataURL,
+            wasmURL
+        ];
+
+        const buildURL = new URL(
+            CONFIG.buildURL,
+            document.baseURI
+        ).href;
+
+        const config = {
+
+            dataUrl: dataURL,
+
+            frameworkUrl:
+                buildURL + CONFIG.framework,
+
+            codeUrl: wasmURL,
+
+            streamingAssetsUrl:
+                new URL(
+                    CONFIG.streamingAssets,
+                    document.baseURI
+                ).href,
+
+            companyName:
+                CONFIG.companyName,
+
+            productName:
+                CONFIG.productName,
+
+            productVersion:
+                CONFIG.productVersion
+        };
+
+        await loadUnityLoader();
+
+        statusText.textContent =
+            "Starting Hollow Knight...";
+
+        details.textContent =
+            "Initializing game engine.";
+
+        unityContainer.style.display = "flex";
+
+        canvas.style.visibility = "hidden";
+
+        const unityInstance = await createUnityInstance(
+            canvas,
+            config,
+            progress => {
+
+                setOverall(70 + progress * 30);
+
+                statusText.textContent =
+                    "Loading Hollow Knight...";
+
+                details.textContent =
+                    "Initializing game engine.";
+            }
+        );
+
+        window.unityInstance = unityInstance;
+
+        canvas.style.visibility = "visible";
+
+        setOverall(100);
+
+        statusText.textContent =
+            "Hollow Knight ready";
+
+        details.textContent =
+            "Enjoy your game.";
+
+        loadingScreen.style.opacity = "0";
+
+        setTimeout(() => {
+            loadingScreen.style.display = "none";
+        }, 500);
+
+        $("fullscreenButton").onclick = () => {
+            unityInstance.SetFullscreen(1);
+        };
+
+        console.log(
+            "Hollow Knight started successfully."
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Hollow Knight loading error:",
+            error
+        );
+
+        unityContainer.style.display = "none";
+
+        statusText.textContent =
+            "Unable to load Hollow Knight";
+
+        errorElement.style.display = "block";
+
+        errorElement.textContent =
+            error.stack ||
+            error.message ||
+            String(error);
+
+        retryButton.style.display =
+            "inline-block";
+
+        details.textContent =
+            "An error occurred. See the error message above.";
+
+    } finally {
+
+        starting = false;
+    }
+}
+
+
+/* =========================================
+   GLOBAL ERROR HANDLING
+========================================= */
+
+window.addEventListener("error", event => {
+    console.error(
+        "Page error:",
+        event.error || event.message
+    );
+});
+
+window.addEventListener("unhandledrejection", event => {
+    console.error(
+        "Unhandled promise rejection:",
+        event.reason
+    );
+});
+
+
+/* =========================================
+   INITIALIZE
+========================================= */
+
+window.addEventListener("load", () => {
+    startGame();
+});
+
+</script>
+
+</body>
+</html>
