@@ -1,0 +1,481 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Undertale Webport</title>
+<style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #000;
+  color: #fff;
+  font-family: "Courier New", monospace;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+header {
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  border-bottom: 2px solid white;
+}
+h1 { font-size: 18px; letter-spacing: 2px; margin: 0; }
+button, input { font: inherit; }
+button {
+  color: white;
+  background: black;
+  border: 2px solid white;
+  padding: 10px 12px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+button:active { background: white; color: black; }
+main { width: min(100%, 1000px); margin: auto; padding: 12px; }
+#game {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  max-height: 70vh;
+  min-height: 220px;
+  background: black;
+  border: 3px solid white;
+  position: relative;
+  overflow: hidden;
+}
+#canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+.panel { border: 2px solid white; padding: 14px; margin-top: 14px; }
+.panel h2 { font-size: 16px; margin-top: 0; }
+.hint { color: #bbb; line-height: 1.6; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+input[type=file] { max-width: 100%; }
+#status { color: #9f9; overflow-wrap: anywhere; line-height: 1.6; }
+#message {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  padding: 20px;
+  background: #000;
+  line-height: 1.7;
+}
+#message[hidden] { display: none; }
+#heart { color: #f33; font-size: 36px; }
+#controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+#dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 46px);
+  grid-template-rows: repeat(2, 46px);
+  gap: 5px;
+}
+#dpad button, #actions button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 5px;
+}
+#up { grid-column: 2; grid-row: 1; }
+#left { grid-column: 1; grid-row: 2; }
+#down { grid-column: 2; grid-row: 2; }
+#right { grid-column: 3; grid-row: 2; }
+#actions { display: flex; gap: 8px; }
+#console {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 240px;
+  overflow: auto;
+  color: #9f9;
+  font-size: 12px;
+}
+footer { text-align: center; padding: 20px 10px; color: #888; font-size: 12px; }
+[hidden] { display: none !important; }
+@media (max-width: 420px) {
+  h1 { font-size: 15px; }
+  #dpad { grid-template-columns: repeat(3, 40px); grid-template-rows: repeat(2, 40px); }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>UNDERTALE WEBPORT</h1>
+  <div class="row">
+    <button id="fullscreenBtn">Fullscreen</button>
+    <button id="consoleBtn">Console</button>
+  </div>
+</header>
+
+<main>
+  <section id="game" aria-label="Game viewport">
+    <canvas id="canvas" tabindex="0"></canvas>
+    <div id="message">
+      <div id="heart">♥</div>
+      <h2>UNDERTALE</h2>
+      <p>DETERMINATION.</p>
+      <p id="messageText">Choose your own data.win file to begin.</p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>LOAD YOUR GAME</h2>
+    <p class="hint">
+      Choose data.win from your own Undertale installation.
+      The file is stored in this browser's site storage and is not uploaded
+      to GitHub.
+    </p>
+    <div class="row">
+      <input id="gameFile" type="file" accept=".win,.unx">
+      <button id="launchBtn">Load and launch</button>
+    </div>
+    <p id="status" role="status">Runtime not loaded.</p>
+  </section>
+
+  <section class="panel">
+    <h2>TOUCH CONTROLS</h2>
+    <p class="hint">Keyboard: arrows/WASD, Z or Enter to confirm, X or Shift to cancel.</p>
+    <div id="controls">
+      <div id="dpad">
+        <button id="up" data-key="ArrowUp">▲</button>
+        <button id="left" data-key="ArrowLeft">◀</button>
+        <button id="down" data-key="ArrowDown">▼</button>
+        <button id="right" data-key="ArrowRight">▶</button>
+      </div>
+      <div id="actions">
+        <button data-key="z">Z<br><small>Confirm</small></button>
+        <button data-key="x">X<br><small>Cancel</small></button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>STATUS</h2>
+    <p id="runtimeStatus" class="hint">Waiting for runtime.</p>
+  </section>
+
+  <section class="panel" id="consolePanel" hidden>
+    <h2>CONSOLE</h2>
+    <pre id="console">Webport initialized.</pre>
+  </section>
+</main>
+
+<footer>
+  Fan-made project, not affiliated with Toby Fox.
+  Supply your own game files.
+</footer>
+
+<script type="module">
+"use strict";
+
+const $ = id => document.getElementById(id);
+let runtime = null;
+let launching = false;
+let fileStored = false;
+let storageMounted = false;
+
+function log(message) {
+  const output = $("console");
+  output.textContent += "\n" + String(message);
+  output.scrollTop = output.scrollHeight;
+}
+
+function status(message) {
+  $("status").textContent = message;
+  log(message);
+}
+
+function describeError(error) {
+  return [
+    error?.name,
+    error?.message,
+    error?.stack
+  ].filter(Boolean).join("\n");
+}
+
+async function getRuntime() {
+  if (runtime) return runtime;
+
+  status("Loading WebAssembly runtime...");
+
+  const { default: createButterscotch } =
+    await import("./runtime/butterscotch.mjs");
+
+  runtime = await createButterscotch({
+    canvas: $("canvas"),
+    print: text => log(text),
+    printErr: text => log("Runtime error: " + text),
+    locateFile: file => new URL("./runtime/" + file, import.meta.url).href
+  });
+
+  for (const name of ["_malloc", "_free", "_mountOpfs", "_startRunner"]) {
+    if (typeof runtime[name] !== "function") {
+      throw new Error("Runtime function is not exported: " + name);
+    }
+  }
+
+  if (typeof runtime.setValue !== "function" ||
+      typeof runtime.stringToNewUTF8 !== "function" ||
+      typeof runtime.ccall !== "function") {
+    throw new Error("Required Emscripten JavaScript helpers are missing.");
+  }
+
+  status("Runtime loaded.");
+  return runtime;
+}
+
+async function mountStorage(mod) {
+  if (storageMounted) return;
+
+  status("Initializing persistent browser storage...");
+
+  const result = await mod.ccall(
+    "mountOpfs",
+    "number",
+    [],
+    [],
+    { async: true }
+  );
+
+  if (result !== 0) {
+    throw new Error("OPFS mount failed with result " + result);
+  }
+
+  storageMounted = true;
+  log("Persistent storage mounted.");
+}
+
+function makeArgv(mod, args) {
+  const stringPointers = [];
+  let argvPointer = 0;
+
+  try {
+    for (const arg of args) {
+      stringPointers.push(mod.stringToNewUTF8(arg));
+    }
+
+    argvPointer = mod._malloc(stringPointers.length * 4);
+
+    if (!argvPointer) {
+      throw new Error("Could not allocate the argument pointer array.");
+    }
+
+    // IMPORTANT: HEAPU32 is not exported by our current build.
+    // setValue is exported and writes a 32-bit pointer into WASM memory.
+    for (let i = 0; i < stringPointers.length; i++) {
+      mod.setValue(
+        argvPointer + i * 4,
+        stringPointers[i],
+        "i32"
+      );
+    }
+
+    return {
+      pointer: argvPointer,
+      count: stringPointers.length,
+      free() {
+        for (const pointer of stringPointers) {
+          mod._free(pointer);
+        }
+        if (argvPointer) mod._free(argvPointer);
+        argvPointer = 0;
+        stringPointers.length = 0;
+      }
+    };
+  } catch (error) {
+    for (const pointer of stringPointers) {
+      try { mod._free(pointer); } catch {}
+    }
+    if (argvPointer) {
+      try { mod._free(argvPointer); } catch {}
+    }
+    throw error;
+  }
+}
+
+function keyCode(key) {
+  const keys = {
+    ArrowUp: 38, ArrowDown: 40,
+    ArrowLeft: 37, ArrowRight: 39,
+    z: 90, x: 88, Enter: 13,
+    Shift: 16, c: 67, Control: 17,
+    w: 87, a: 65, s: 83, d: 68
+  };
+  return keys[key];
+}
+
+function sendKey(key, down) {
+  if (!runtime) return;
+  const code = keyCode(key);
+  if (code === undefined) return;
+
+  const fn = down ? runtime._onKeyDown : runtime._onKeyUp;
+  if (typeof fn === "function") fn(code);
+}
+
+window.addEventListener("keydown", event => {
+  const key = event.key.length === 1
+    ? event.key.toLowerCase()
+    : event.key;
+
+  if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(event.key)) {
+    event.preventDefault();
+  }
+
+  sendKey(key, true);
+});
+
+window.addEventListener("keyup", event => {
+  const key = event.key.length === 1
+    ? event.key.toLowerCase()
+    : event.key;
+
+  sendKey(key, false);
+});
+
+document.querySelectorAll("[data-key]").forEach(button => {
+  const key = button.dataset.key;
+
+  button.addEventListener("pointerdown", event => {
+    event.preventDefault();
+    try { button.setPointerCapture(event.pointerId); } catch {}
+    sendKey(key, true);
+  });
+
+  const release = event => {
+    event.preventDefault();
+    sendKey(key, false);
+  };
+
+  button.addEventListener("pointerup", release);
+  button.addEventListener("pointercancel", release);
+  button.addEventListener("lostpointercapture", release);
+  button.addEventListener("contextmenu", event => event.preventDefault());
+});
+
+window.addEventListener("blur", () => {
+  for (const key of [
+    "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+    "z", "x", "Enter", "Shift", "w", "a", "s", "d"
+  ]) {
+    sendKey(key, false);
+  }
+});
+
+$("fullscreenBtn").addEventListener("click", async () => {
+  try {
+    if (!document.fullscreenElement) {
+      await $("game").requestFullscreen();
+    } else {
+      await document.exitFullscreen();
+    }
+  } catch (error) {
+    status("Fullscreen unavailable: " + (error.message || error));
+  }
+});
+
+$("consoleBtn").addEventListener("click", () => {
+  $("consolePanel").hidden = !$("consolePanel").hidden;
+});
+
+$("launchBtn").addEventListener("click", async () => {
+  if (launching) return;
+
+  const file = $("gameFile").files?.[0];
+
+  if (!fileStored && !file) {
+    status("Choose your data.win file first.");
+    return;
+  }
+
+  launching = true;
+  $("launchBtn").disabled = true;
+
+  let allocated = null;
+
+  try {
+    const mod = await getRuntime();
+    await mountStorage(mod);
+
+    if (!fileStored) {
+      status("Reading selected game file...");
+
+      const bytes = new Uint8Array(await file.arrayBuffer());
+
+      if (!bytes.length) {
+        throw new Error("The selected file is empty.");
+      }
+
+      mod.FS.writeFile("/butterscotch/data.win", bytes);
+
+      fileStored = true;
+      $("gameFile").disabled = true;
+      log("Game file stored in browser site storage.");
+    }
+
+    $("message").hidden = true;
+    $("runtimeStatus").textContent = "Starting runtime...";
+
+    const args = [
+      "--save-folder",
+      "/butterscotch/saves",
+      "/butterscotch/data.win"
+    ];
+
+    allocated = makeArgv(mod, args);
+
+    status("Starting Butterscotch...");
+
+    // startRunner expects (argc, argv), not a list of JS strings.
+    const result = await mod.ccall(
+      "startRunner",
+      "number",
+      ["number", "number"],
+      [allocated.count, allocated.pointer],
+      { async: true }
+    );
+
+    log("Runner returned: " + result);
+    $("runtimeStatus").textContent = "Runner exited.";
+  } catch (error) {
+    const details = describeError(error);
+    log("LAUNCH FAILURE:\n" + details);
+    $("status").textContent = "Launch failed. See Console for details.";
+    $("runtimeStatus").textContent = "Launch failed.";
+    $("message").hidden = false;
+    $("messageText").textContent = "Runtime failed to start. Open Console.";
+    $("consolePanel").hidden = false;
+  } finally {
+    if (allocated) {
+      try {
+        allocated.free();
+        log("Runtime arguments cleaned up.");
+      } catch (error) {
+        log("Argument cleanup warning: " + describeError(error));
+      }
+    }
+
+    launching = false;
+    $("launchBtn").disabled = false;
+  }
+});
+
+log("Interface ready.");
+log("Runtime files are loaded from /runtime/.");
+</script>
+</body>
+</html>
