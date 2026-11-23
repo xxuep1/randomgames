@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HelloNeighborAlpha1 Webport</title>
+<link rel="icon" href="https://raw.githubusercontent.com/IordBeerus/hello-neighbor-Alpha-1-Port/main/HelloNeighborWebport.ico">
+<style>
+:root { color-scheme: dark; }
+html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+canvas { position: absolute; inset: 0; margin: auto; max-width: 100%; max-height: 100%; aspect-ratio: 1280 / 720; width: 100%; height: auto; outline: none; }
+@media (min-aspect-ratio: 1280 / 720) { canvas { width: auto; height: 100%; } }
+#status { position: fixed; left: 16px; bottom: 12px; font: 13px system-ui, sans-serif; color: #9a9a9a; pointer-events: none; }
+#credit { position: fixed; right: 12px; bottom: 12px; font: 13px system-ui, sans-serif; color: #9a9a9a; pointer-events: none; }
+#fps { position: fixed; left: 8px; top: 6px; font: 600 13px ui-monospace, Consolas, monospace; color: #e8e8e8; background: #000a; padding: 2px 6px; border-radius: 4px; pointer-events: none; display: none; }
+</style>
+</head>
+<body>
+<canvas id="canvas" width="1280" height="720" tabindex="0"></canvas>
+<div id="status">Loading…</div>
+<div id="fps"></div>
+<div id="credit">Ported by ThatMilkdud</div>
+<script>
+(() => {
+  const el = document.getElementById("fps");
+  let on = false;
+  try { const v = localStorage.getItem("uewFps"); if (v !== null) on = v === "1"; } catch (e) {}
+  const q = new URLSearchParams(location.search).get("fps");
+  if (q !== null) on = q !== "0";
+  const show = () => { el.style.display = on ? "block" : "none"; };
+  show();
+  addEventListener("keydown", e => {
+    if (e.ctrlKey && e.shiftKey && e.code === "KeyF") {
+      on = !on; show();
+      try { localStorage.setItem("uewFps", on ? "1" : "0"); } catch (err) {}
+      e.preventDefault(); e.stopImmediatePropagation();
+    }
+  }, true);
+  let last = performance.now(), frames = 0, worst = 0, prev = 0, prevT = last;
+  const tick = now => {
+    const n = (window.Module && Module.uewPresents) || 0;
+    if (n !== prev) { worst = Math.max(worst, now - prevT); prev = n; prevT = now; }
+    if (now - last >= 500) {
+      const fps = (n - frames) * 1000 / (now - last);
+      if (on) el.textContent = `${fps.toFixed(0)} FPS  ${fps ? (1000 / fps).toFixed(1) : "-"} ms  worst ${worst.toFixed(0)} ms`;
+      frames = n; last = now; worst = 0;
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+})();
+</script>
+<script>
+const BASE = "https://raw.githubusercontent.com/IordBeerus/hello-neighbor-Alpha-1-Port/main/";
+const asset = path => BASE + path;
+const status = document.getElementById("status");
+const parts = ["game.wasm.0", "game.wasm.1", "game.wasm.2", "game.wasm.3", "game.wasm.4", "game.wasm.5", "game.wasm.6", "game.wasm.7", "game.wasm.8", "game.wasm.9"];
+var Module = {
+  canvas: document.getElementById("canvas"),
+  arguments: ["--image", "/image.bin", "--root", "/game", "--save", "/save/HelloNeighborReborn-Win64-Shipping", "--exe", "HelloNeighborReborn/Binaries/Win64/HelloNeighborReborn-Win64-Shipping.exe", "-dx11"].concat(new URLSearchParams(location.search).getAll("arg")),
+  uewSave: "/save/HelloNeighborReborn-Win64-Shipping",
+  uewSeed: {},
+  uewAsyncShaders: true,
+  uewDebugPanel: true,
+  uewNetPlaceholders: false,
+  uewCacheMB: 1700,
+  uewGpuMB: 5530,
+  print: t => console.log(t),
+  printErr: t => console.log(t),
+  setStatus: t => { if (t) status.textContent = t; },
+  onRuntimeInitialized: () => { status.textContent = ""; },
+};
+if (new URLSearchParams(location.search).get("perf") !== "high") {
+  const nl = "\n";
+  const engine = "[/SystemSettings]" + nl + [
+    "r.ScreenPercentage=60", "r.MotionBlurQuality=0", "r.PostProcessAAQuality=0", "r.ShadowQuality=0",
+    "r.Shadow.MaxResolution=256", "r.ViewDistanceScale=0.6", "r.SSR.Quality=0", "r.AmbientOcclusionLevels=0",
+    "r.LightFunctionQuality=0", "r.ParticleLightQuality=0", "r.MaxAnisotropy=1", "r.DepthOfFieldQuality=0",
+    "r.BloomQuality=0"].join(nl) + nl;
+  const user = "[ScalabilityGroups]" + nl + [
+    "sg.ResolutionQuality=60", "sg.ViewDistanceQuality=0", "sg.AntiAliasingQuality=0", "sg.ShadowQuality=0",
+    "sg.PostProcessQuality=0", "sg.TextureQuality=2", "sg.EffectsQuality=0", "sg.FoliageQuality=0"].join(nl) + nl;
+  const dir = "Users/Player/AppData/Local/HelloNeighborReborn/Saved/Config/";
+  for (const plat of ["WindowsNoEditor", "Windows"]) {
+    Module.uewSeed[dir + plat + "/Engine.ini"] = engine;
+    Module.uewSeed[dir + plat + "/GameUserSettings.ini"] = user;
+  }
+}
+Module.instantiateWasm = (imports, done) => {
+  let got = 0;
+  const res = parts.map(u => fetch(asset(u)));
+  const body = new ReadableStream({
+    async start(ctl) {
+      try {
+        for (let i = 0; i < res.length; i++) {
+          const r = await res[i];
+          if (!r.ok) throw new Error(`HTTP ${r.status} for ${parts[i]}`);
+          const rd = r.body.getReader();
+          for (;;) {
+            const { done: end, value } = await rd.read();
+            if (end) break;
+            got += value.length;
+            status.textContent = `Loading code ${Math.round(got / 1048576)} MB`;
+            ctl.enqueue(value);
+          }
+        }
+        status.textContent = "Compiling…";
+        ctl.close();
+      } catch (e) {
+        status.textContent = "Failed to load code: " + e.message;
+        ctl.error(e);
+      }
+    }
+  });
+  WebAssembly.instantiateStreaming(new Response(body, { headers: { "Content-Type": "application/wasm" } }), imports)
+    .then(r => done(r.instance, r.module))
+    .catch(e => { status.textContent = "Failed to load: " + e.message; });
+  return {};
+};
+</script>
+<script>
+const dataParts = ["32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "56", "57", "58", "59", "60", "61", "62", "63", "64", "65", "66", "67", "68", "69", "70", "71", "72", "73", "74", "75", "76", "77", "78", "79", "80", "81", "82", "83", "84", "85", "86", "87", "88", "89", "90", "91", "92", "93", "94", "95", "96", "97", "98", "99", "100", "101", "102", "103", "104", "105", "106", "107", "108", "109", "110", "111", "112", "113", "114", "115", "116", "117", "118", "119", "120", "121", "122", "123", "124", "125", "126", "127", "128", "129", "130", "131", "132", "133", "134", "135", "136", "137", "138", "139", "140", "141", "142", "143", "144", "145", "146", "147", "148", "149", "150", "151", "152", "153", "154", "155", "156", "157", "158", "159", "160", "161", "162", "163", "164", "165", "166", "167", "168", "169", "170", "171", "172", "173", "174", "175", "176", "177", "178", "179", "180", "181", "182", "183", "184", "185", "186", "187", "188", "189", "190", "191", "192", "193", "194", "195", "196", "197", "198", "199", "200", "201", "202", "203", "204", "205", "206", "207", "208", "209", "210", "211", "212", "213", "214", "215", "216", "217", "218", "219", "220", "221", "222", "223", "224", "225", "226", "227", "228", "229", "230", "231", "232", "233", "234", "235", "236", "237", "238", "239", "240", "241", "242", "243", "244", "245", "246", "247", "248", "249", "250", "251", "252", "253", "254", "255", "256", "257", "258", "259", "260", "261", "262", "263", "264", "265", "266", "267", "268", "269", "270", "271", "272", "273", "274", "275", "276", "277", "278", "279", "280", "281", "282", "283", "284", "285", "286", "287", "288", "289", "290", "291", "292", "293", "294", "295", "296", "297", "298", "299", "300", "301", "302", "303", "304", "305", "306", "307", "308", "309", "310", "311", "312", "313", "314", "315", "316", "317", "318", "319", "320", "321", "322", "323", "324", "325", "326", "327", "328", "329", "330", "331", "332", "333", "334", "335", "336", "337", "338", "339", "340", "341", "342", "343", "344", "345", "346", "347", "348", "349", "350", "351", "352", "353", "354", "355", "356", "357", "358", "359", "360", "361", "362", "363", "364", "365", "366", "367", "368", "369", "370", "371", "372", "373", "374", "375", "376", "377", "378", "379", "380", "381", "382", "383", "384", "385", "386", "387", "388", "389", "390", "391", "392", "393", "394", "395", "396", "397", "398", "399", "400", "401", "402", "403", "404", "405", "406", "407", "408", "409", "410", "411", "412", "413", "414", "415", "416", "417", "418", "419", "420", "421", "422", "423", "424", "425", "426", "427", "428", "429", "430", "431", "432", "433", "434", "435", "436", "437", "438", "439", "440", "441", "442", "443", "444", "445", "446", "447", "448", "449", "450", "451", "452", "453", "454", "455", "456", "457", "458", "459", "460", "461", "462", "463", "464", "465", "466", "467", "468", "469", "470", "471", "472", "473", "474", "475", "476", "477", "478", "479", "480", "481", "482", "483", "484", "485", "486", "487", "488", "489", "490", "491", "492", "493", "494", "495", "496", "497", "498", "499", "500", "501", "502", "503", "504", "505", "506", "507", "508", "509", "510", "511", "512", "513", "514", "515", "516", "517", "518", "519", "520", "521", "522", "523", "524", "525", "526", "527", "528", "529", "530", "531", "532", "533", "534", "535", "536", "537", "538", "539", "540", "541", "542", "543", "544", "545", "546", "547", "548", "549", "550", "551", "552", "553", "554", "555", "556", "557", "558", "559", "560", "561", "562", "563", "564", "565", "566", "567", "568", "569", "570", "571", "572", "573", "574", "575", "576", "577", "578", "579", "580", "581", "582", "583", "584", "585", "586", "587", "588", "589", "590", "591", "592", "593", "594", "595", "596", "597", "598", "599", "600", "601", "602", "603", "604", "605", "606", "607", "608", "609", "610", "611", "612", "613", "614", "615", "616", "617", "618", "619", "620", "621", "622", "623", "624", "625", "626", "627", "628", "629", "630", "631", "632", "633", "634", "635", "636", "637", "638", "639", "640", "641", "642", "643", "644", "645", "646", "647", "648", "649", "650", "651", "652", "653", "654", "655", "656", "657", "658", "659", "660", "661", "662", "663", "664", "665", "666", "667", "668", "669", "670", "671", "672", "673", "674", "675", "676", "677", "678", "679", "680", "681", "682", "683", "684", "685", "686", "687", "688", "689", "690", "691", "692", "693", "694", "695", "696", "697", "698", "699", "700", "701", "702", "703", "704", "705", "706", "707", "708", "709", "710", "711", "712", "713", "714", "715", "716", "717", "718", "719", "720", "721", "722", "723", "724", "725", "726", "727", "728", "729", "730", "731", "732", "733", "734", "735", "736", "737", "738", "739", "740", "741", "742", "743", "744", "746", "747", "748", "749", "750", "751", "753", "753.1", "753.2", "753.3", "753.4", "753.5", "753.6", "753.7", "753.8", "753.9", "753.10", "753.11", "753.12", "753.13", "753.14", "753.15", "753.16", "753.17", "753.18", "753.19", "753.20", "753.21", "753.22", "753.23", "753.24", "753.25", "753.26", "753.27", "753.28", "753.29", "753.30", "753.31", "753.32", "753.33", "753.34", "753.35", "753.36", "753.37", "753.38", "753.39", "753.40", "753.41", "753.42", "753.43", "753.44", "753.45", "753.46", "753.47", "753.48", "753.49", "753.50", "753.51", "753.52", "753.53", "753.54", "753.55", "753.56", "753.57", "753.58", "753.59", "753.60", "753.61", "753.62", "753.63", "755", "755.1", "755.2"];
+const status = document.getElementById("status");
+const prefetchData = async () => {
+  const blobs = new Map();
+  const names = ["index.txt"].concat(dataParts);
+  for (const n of names) {
+    const r = await fetch(asset("data/" + n));
+    if (!r.ok) throw new Error(`HTTP ${r.status} for data/${n}`);
+    blobs.set(n, await r.blob());
+    status.textContent = `Loading data ${blobs.size}/${names.length}`;
+  }
+  Module.uewEmbed = { index: await blobs.get("index.txt").text(), part: n => blobs.get(n) };
+};
+if (self.crossOriginIsolated) {
+  prefetchData().then(() => {
+    const s = document.createElement("script");
+    s.src = asset("game.js");
+    s.onerror = () => { status.textContent = "Failed to load game.js"; };
+    document.body.appendChild(s);
+  }).catch(e => { status.textContent = "Failed to load data: " + e.message; });
+} else if (navigator.serviceWorker && window.isSecureContext) {
+  status.textContent = "Setting up threads…";
+  navigator.serviceWorker.register(asset("coi-sw.js"), { scope: new URL("./", BASE).pathname }).then(() => navigator.serviceWorker.ready).then(() => {
+    if (sessionStorage.getItem("uewCoi") === location.href) status.textContent = "This host blocks the isolation real threads need; rebuild with cooperative threads.";
+    else { sessionStorage.setItem("uewCoi", location.href); location.reload(); }
+  }).catch(e => { status.textContent = "Thread setup failed: " + e.message; });
+} else status.textContent = "Real threads need https (or localhost) to run.";
+</script>
+</body>
+</html>
