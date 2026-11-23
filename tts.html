@@ -14,13 +14,9 @@
 </head>
 <body class="bg-slate-100 text-slate-800 min-h-screen flex items-center justify-center p-4">
 
-    <!-- Minimalist Centered Card -->
     <main class="w-full max-w-lg bg-white rounded-2xl shadow-sm border border-slate-200/80 p-6 sm:p-7 space-y-5">
-        
-        <!-- Header -->
         <h1 class="text-lg font-semibold text-slate-900 tracking-tight">Text to Speech</h1>
 
-        <!-- Text Box -->
         <div>
             <textarea
                 id="text-input"
@@ -30,7 +26,6 @@
             >Hello! Type anything here, pick a voice, adjust the sliders, and click Play or Download.</textarea>
         </div>
 
-        <!-- Voice Selector -->
         <div>
             <label for="voice-select" class="block text-xs font-medium text-slate-500 mb-1.5">Voice</label>
             <select
@@ -41,9 +36,7 @@
             </select>
         </div>
 
-        <!-- Three Sliders: Speed, Pitch, Volume -->
         <div class="space-y-4 pt-1">
-            <!-- Speed -->
             <div>
                 <div class="flex justify-between text-xs font-medium mb-1">
                     <label for="speed-slider" class="text-slate-600">Speed</label>
@@ -52,7 +45,6 @@
                 <input id="speed-slider" type="range" min="0.5" max="2" step="0.1" value="1" class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
             </div>
 
-            <!-- Pitch -->
             <div>
                 <div class="flex justify-between text-xs font-medium mb-1">
                     <label for="pitch-slider" class="text-slate-600">Pitch</label>
@@ -61,7 +53,6 @@
                 <input id="pitch-slider" type="range" min="0.5" max="2" step="0.1" value="1" class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
             </div>
 
-            <!-- Volume -->
             <div>
                 <div class="flex justify-between text-xs font-medium mb-1">
                     <label for="volume-slider" class="text-slate-600">Volume</label>
@@ -71,7 +62,6 @@
             </div>
         </div>
 
-        <!-- Three Action Buttons -->
         <div class="grid grid-cols-3 gap-2.5 pt-2">
             <button
                 id="play-btn"
@@ -98,8 +88,7 @@
             </button>
         </div>
 
-        <!-- Subtle Inline Status Line -->
-        <p id="status-msg" class="text-xs text-center text-slate-400 h-4"></p>
+        <p id="status-msg" class="text-xs text-center text-slate-500 min-h-[1.25rem]"></p>
     </main>
 
     <script>
@@ -126,7 +115,6 @@
             statusMsg.textContent = msg;
         }
 
-        // Populate system voices
         function loadVoices() {
             voices = synth.getVoices();
             if (!voices.length) return;
@@ -154,7 +142,6 @@
             synth.onvoiceschanged = loadVoices;
         }
 
-        // Update slider labels
         speedSlider.addEventListener('input', () => {
             speedVal.textContent = `${parseFloat(speedSlider.value).toFixed(1)}x`;
         });
@@ -164,6 +151,16 @@
         volumeSlider.addEventListener('input', () => {
             volumeVal.textContent = `${Math.round(parseFloat(volumeSlider.value) * 100)}%`;
         });
+
+        function createUtterance(text) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            const selectedVoice = voices[voiceSelect.value];
+            if (selectedVoice) utterance.voice = selectedVoice;
+            utterance.rate = parseFloat(speedSlider.value);
+            utterance.pitch = parseFloat(pitchSlider.value);
+            utterance.volume = parseFloat(volumeSlider.value);
+            return utterance;
+        }
 
         // Play TTS
         playBtn.addEventListener('click', () => {
@@ -175,19 +172,10 @@
             }
 
             synth.cancel();
-
-            const utterance = new SpeechSynthesisUtterance(text);
-            const selectedVoice = voices[voiceSelect.value];
-            if (selectedVoice) utterance.voice = selectedVoice;
-
-            utterance.rate = parseFloat(speedSlider.value);
-            utterance.pitch = parseFloat(pitchSlider.value);
-            utterance.volume = parseFloat(volumeSlider.value);
-
+            const utterance = createUtterance(text);
             utterance.onstart = () => setStatus('Speaking...');
             utterance.onend = () => setStatus('');
             utterance.onerror = () => setStatus('');
-
             synth.speak(utterance);
         });
 
@@ -197,8 +185,8 @@
             setStatus('');
         });
 
-        // Instant Offline WAV Synthesizer & Download
-        downloadBtn.addEventListener('click', () => {
+        // Capture & Download Real Browser TTS Voice
+        downloadBtn.addEventListener('click', async () => {
             const text = textInput.value.trim();
             if (!text) {
                 setStatus('Enter some text first.');
@@ -206,78 +194,27 @@
                 return;
             }
 
-            const rate = parseFloat(speedSlider.value);
-            const pitch = parseFloat(pitchSlider.value);
-            const volume = parseFloat(volumeSlider.value);
+            try {
+                setStatus('Select "This Tab" and turn ON "Share tab audio" in the popup...');
+                
+                // Request tab audio capture
+                const stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: true,
+                    audio: true
+                });
 
-            const sampleRate = 22050;
-            const charDur = 0.065 / rate;
-            const totalSamples = Math.min(sampleRate * 45, Math.max(sampleRate * 0.5, Math.floor(text.length * charDur * sampleRate)));
-            const samples = new Float32Array(totalSamples);
+                const audioTracks = stream.getAudioTracks();
+                if (audioTracks.length === 0) {
+                    stream.getTracks().forEach(t => t.stop());
+                    setStatus('No audio shared! Make sure to check "Share tab audio".');
+                    return;
+                }
 
-            const baseFreq = 150 * pitch;
-            const vowels = { a: [730, 1090], e: [530, 1840], i: [270, 2290], o: [570, 840], u: [300, 870] };
-            let phase = 0, y1 = 0, y2 = 0, z1 = 0, z2 = 0;
+                // Stop video track immediately since we only want audio
+                stream.getVideoTracks().forEach(t => t.stop());
 
-            for (let i = 0; i < totalSamples; i++) {
-                const charIdx = Math.min(text.length - 1, Math.floor((i / totalSamples) * text.length));
-                const ch = text[charIdx].toLowerCase();
-                const localPos = ((i / totalSamples) * text.length) % 1;
-                const env = /[a-z0-9]/.test(ch) ? Math.sin(Math.PI * localPos) : 0;
+                const audioStream = new MediaStream(audioTracks);
+                const mediaRecorder = new MediaRecorder(audioStream);
+                const chunks = [];
 
-                const [f1, f2] = vowels[ch] || [500, 1500];
-                const freq = baseFreq * (1 + 0.06 * Math.sin((i / sampleRate) * Math.PI * 3));
-                phase = (phase + freq / sampleRate) % 1;
-
-                const pulse = (phase < 0.4 ? Math.sin(Math.PI * phase / 0.4) : -0.2 * Math.sin(Math.PI * (phase - 0.4) / 0.6)) * env;
-
-                // Two-formant vocal resonator
-                const r1 = Math.exp(-Math.PI * 100 / sampleRate);
-                const c1 = 2 * r1 * Math.cos(2 * Math.PI * f1 / sampleRate);
-                const out1 = (1 - r1) * pulse + c1 * y1 - r1 * r1 * y2;
-                y2 = y1; y1 = out1;
-
-                const r2 = Math.exp(-Math.PI * 140 / sampleRate);
-                const c2 = 2 * r2 * Math.cos(2 * Math.PI * f2 / sampleRate);
-                const out2 = (1 - r2) * pulse + c2 * z1 - r2 * r2 * z2;
-                z2 = z1; z1 = out2;
-
-                samples[i] = Math.tanh((out1 * 0.65 + out2 * 0.35) * 2.5) * volume * 0.85;
-            }
-
-            // Encode 16-bit PCM WAV
-            const buffer = new ArrayBuffer(44 + samples.length * 2);
-            const view = new DataView(buffer);
-            const writeStr = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
-
-            writeStr(0, 'RIFF');
-            view.setUint32(4, 36 + samples.length * 2, true);
-            writeStr(8, 'WAVE');
-            writeStr(12, 'fmt ');
-            view.setUint32(16, 16, true);
-            view.setUint16(20, 1, true);
-            view.setUint16(22, 1, true);
-            view.setUint32(24, sampleRate, true);
-            view.setUint32(28, sampleRate * 2, true);
-            view.setUint16(32, 2, true);
-            view.setUint16(34, 16, true);
-            writeStr(36, 'data');
-            view.setUint32(40, samples.length * 2, true);
-
-            for (let i = 0; i < samples.length; i++) {
-                const s = Math.max(-1, Math.min(1, samples[i]));
-                view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-            }
-
-            const blob = new Blob([view], { type: 'audio/wav' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'speech.wav';
-            a.click();
-            setTimeout(() => URL.revokeObjectURL(url), 2000);
-            setStatus('Downloaded speech.wav');
-        });
-    </script>
-</body>
-</html>
+                mediaRecorder.ondataavailable = (e
